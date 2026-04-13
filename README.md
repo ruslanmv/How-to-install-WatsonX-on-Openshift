@@ -1,31 +1,47 @@
 # How to install Watsonx.ai on Openshift
 
 
-Since April 6, 2025, IBM Cloud stopped allowing new users to create watsonx.ai Lite
-instances. If you are in a university lab or academic program and suddenly found yourself
-locked out, you are not alone — and there is a solid alternative. You can deploy
-watsonx.ai yourself on top of Red Hat OpenShift, whether that is a cloud cluster or
-something you are running on-premises. That is exactly what this guide walks you through,
-from a clean cluster all the way to a working AI environment.
+Since 2025, IBM has significantly restricted or phased out new watsonx.ai Lite instance
+creation in many regions. If you are in a university lab or academic program and suddenly
+found yourself unable to create a new instance, you are not alone — and there is a solid
+alternative. You can deploy watsonx.ai yourself on top of Red Hat OpenShift, whether that
+is a cloud cluster or something you are running on-premises. That is exactly what this
+guide walks you through, from a clean cluster all the way to a working AI environment.
+
+One important thing to know before you start: watsonx.ai is not free even when
+self-hosted. It requires a valid IBM license and an active IBM Entitlement Key. If you
+are doing this for academic purposes, check with your IBM contact or university program
+coordinator to confirm you have the right entitlement in place before going any further.
 
 Before we run anything, let me help you pick the right starting point. If you are working
 with a 30-day OpenShift trial or a small PoC cluster, a full watsonx.ai deployment is
-simply not going to fit — it needs at least six worker nodes and around 2 TB of storage.
-The smarter move in that case is to start with Watson Studio only. You still get Jupyter
-notebooks, AutoAI, Data Refinery and the model training framework, which is more than
-enough for coursework and hands-on learning, and it runs comfortably on just three worker
-nodes with no GPU required.
+simply not going to fit — it needs at least six worker nodes and roughly 1 to 2 TB of
+storage depending on which components and models you install. The smarter move in that
+case is to start with Watson Studio only. You still get Jupyter notebooks, AutoAI, Data
+Refinery and the model training framework, which is more than enough for coursework and
+hands-on learning, and it runs comfortably on just three worker nodes with no GPU
+required.
 
 If you do have a larger cluster with GPU nodes available and want the full experience with
 foundation models like Granite, we cover that path too — just keep reading
-past the Watson Studio section.
+past the Watson Studio section. Keep in mind that available models depend on your
+entitlement and the IBM catalog version active in your cluster at installation time.
+
+You will also need outbound network access from your cluster to `icr.io` and IBM
+endpoints to pull container images. If you are in an air-gapped or restricted network
+environment, you will need to mirror the images first — that scenario is outside the
+scope of this guide, but the IBM documentation covers it in detail.
 
 ---
 
 ## Step 0 — Log In as kubeadmin
 
-Every command in this guide must be run as `kubeadmin`. Start by confirming who you
-are currently logged in as:
+Most installation steps in this guide require cluster-admin privileges. The easiest way
+to get that during setup is to use the built-in `kubeadmin` account. Day-to-day CP4D
+operations can and should use regular user accounts, but for the initial deployment you
+want to be running as `kubeadmin`.
+
+Start by confirming who you are currently logged in as:
 
 ```bash
 oc whoami
@@ -52,25 +68,25 @@ the steps below to switch before going any further.
 
 5. Paste it into your terminal and press Enter.
 
-Now verify it worked:
+Verify it worked:
 
 ```bash
 oc whoami
 # Expected output: kube:admin
 ```
 
-Once you see `kube:admin` you have full cluster-admin rights and every command in
-this guide will work as expected. If you share this cluster with a team during a lab,
-use this `kubeadmin` session only for installation and admin tasks — day-to-day lab
-work can run under individual user accounts once permissions are set up in Step 2.
+Once you see `kube:admin` you are ready to proceed. If you share this cluster with a
+team during a lab, use this `kubeadmin` session only for installation and admin tasks —
+day-to-day lab work should run under individual user accounts once permissions are set
+up in Step 2.
 
 ---
 
 ## Step 1 — Check What You Will Need
 
-Let us start simple. Before running a single command, make sure you have these five things
-ready on your workstation and your cluster. Think of this as your packing list before a
-trip — everything goes much more smoothly when it is all prepared upfront.
+Before running a single command, make sure you have these five things ready on your
+workstation and your cluster. Think of this as your packing list before a trip —
+everything goes much more smoothly when it is all prepared upfront.
 
 **1. An OpenShift cluster running version 4.12 or later.**
 You need `cluster-admin` access to it. If you are using the 30-day trial, make sure you
@@ -147,23 +163,16 @@ participants need to inspect resources across many different namespaces during t
 
 **Quick check — confirm your access is working.**
 
-Run these two commands before moving on. They take five seconds and confirm that your
-setup is ready:
-
 ```bash
 # Check 1 — basic cluster access
 oc get storageclass
-```
 
-```bash
 # Check 2 — marketplace namespace access (requires the permission grant above)
 oc get catsrc -n openshift-marketplace
 ```
 
 If both return a table of results, you are good to go. If the second one returns a
 `forbidden` error, go back and apply the permission grant above before continuing.
-It is much better to sort this out now than to hit it unexpectedly in the middle of
-the installation.
 
 ---
 
@@ -280,8 +289,8 @@ cpd-cli manage add-icr-cred-to-global-pull-secret \
   --entitled_registry_key=${IBM_ENTITLEMENT_KEY}
 ```
 
-After running the second command, OpenShift will quietly restart nodes one at a time to
-apply the new pull secret. Give it a few minutes before moving on.
+After running the second command, OpenShift nodes may be cycled or reconfigured to apply
+the new pull secret. Give it a few minutes before moving on.
 
 ---
 
@@ -480,8 +489,9 @@ oc patch watsonxaiifm watsonxaiifm-cr \
   }'
 ```
 
-For the full catalog of available models and their exact GPU requirements, see the
-[IBM documentation on adding foundation models](https://www.ibm.com/docs/en/cloud-paks/cp-data/5.0.x?topic=setup-adding-foundation-models).
+> Available models depend on your IBM entitlement and the catalog version active in your
+> cluster. For the full up-to-date list and GPU requirements, see the
+> [IBM documentation on adding foundation models](https://www.ibm.com/docs/en/cloud-paks/cp-data/5.0.x?topic=setup-adding-foundation-models).
 
 ---
 
@@ -541,8 +551,9 @@ hitting capacity issues halfway through:
 | watsonx.ai (no models) | 32 | 128 | 500 GB |
 | Each foundation model (e.g., Granite 13B) | GPU required | 32+ | 50–100 GB |
 
-These are minimums for a working installation. Production deployments should add headroom
-on top of these numbers.
+These are minimums for a working installation. Total storage for a full watsonx.ai
+deployment with a few models typically lands between 1 and 2 TB depending on which
+components you enable. Production deployments should add headroom on top of these numbers.
 
 ---
 
@@ -578,8 +589,9 @@ cluster-reader option only when a user genuinely needs visibility across all nam
 
 ### The catalog source stays in CONNECTING
 
-This usually means the cluster cannot pull from `icr.io`. Start by checking the catalog
-pod's logs:
+This usually means the cluster cannot reach `icr.io`. Make sure your cluster has
+outbound internet access to IBM container registry endpoints — this is a requirement for
+any connected installation. Start by checking the catalog pod's logs:
 
 ```bash
 oc get pods -n openshift-marketplace | grep ibm-operator
@@ -595,7 +607,8 @@ oc get secret pull-secret -n openshift-config \
 ```
 
 You should see `icr.io` in that list. If you do not, re-run the
-`add-icr-cred-to-global-pull-secret` command and wait a few minutes for nodes to cycle.
+`add-icr-cred-to-global-pull-secret` command and allow a few minutes for nodes to be
+reconfigured.
 
 ### A custom resource is stuck in InProgress
 
