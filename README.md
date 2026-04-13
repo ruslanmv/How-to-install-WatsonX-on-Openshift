@@ -1,26 +1,68 @@
 # How to install Watsonx.ai on Openshift
 
 
-If you have been trying to spin up a watsonx.ai instance on IBM Cloud lately and keep
-hitting a wall, you are not alone. Since April 6, 2025, IBM Cloud no longer allows new
-users to create watsonx.ai Lite instances. This has left a lot of people — especially
-those in academic programs and university labs — scrambling for an alternative. The good
-news is that there is one: you can run the full watsonx.ai stack on top of Red Hat
-OpenShift, whether that is on a public cloud or on your own infrastructure.
+Since April 6, 2025, IBM Cloud stopped allowing new users to create watsonx.ai Lite
+instances. If you are in a university lab or academic program and suddenly found yourself
+locked out, you are not alone — and there is a solid alternative. You can deploy
+watsonx.ai yourself on top of Red Hat OpenShift, whether that is a cloud cluster or
+something you are running on-premises. That is exactly what this guide walks you through,
+from a clean cluster all the way to a working AI environment.
 
-In this guide I will walk you through the entire process from scratch. I will also show
-you a lighter-weight path using Watson Studio only, which is the right choice if you are
-working with a limited cluster — for example the 30-day OpenShift free trial. By the end
-you will have a working environment ready for AI and data science workloads.
+Before we run anything, let me help you pick the right starting point. If you are working
+with a 30-day OpenShift trial or a small PoC cluster, a full watsonx.ai deployment is
+simply not going to fit — it needs at least six worker nodes and around 2 TB of storage.
+The smarter move in that case is to start with Watson Studio only. You still get Jupyter
+notebooks, AutoAI, Data Refinery and the model training framework, which is more than
+enough for coursework and hands-on learning, and it runs comfortably on just three worker
+nodes with no GPU required.
 
-Before we touch a single command, let me help you pick the right path. A full watsonx.ai
-deployment needs significant resources — at least six worker nodes and around 2 TB of
-storage. If you are running a free trial cluster or a small PoC environment, that is
-simply not going to fit. In that case, Watson Studio alone is the smarter starting point:
-it gives you Jupyter notebooks, AutoAI, Data Refinery and the model training framework
-with just three worker nodes and no GPU required — more than enough for coursework and
-hands-on learning. If you do have a beefier cluster and want the full LLM experience with
-foundation models like Granite and Llama 2, we will cover that too.
+If you do have a larger cluster with GPU nodes available and want the full experience with
+foundation models like Granite, we cover that path too — just keep reading
+past the Watson Studio section.
+
+---
+
+## Step 0 — Log In as kubeadmin
+
+Every command in this guide must be run as `kubeadmin`. Start by confirming who you
+are currently logged in as:
+
+```bash
+oc whoami
+```
+
+If the output says `kube:admin` you are good to go. If it shows anything else, follow
+the steps below to switch before going any further.
+
+**How to log in as kubeadmin from the web console:**
+
+1. Open your cluster's web console URL in a browser and log in as `kubeadmin`.
+   On the 30-day trial you can find both the console URL and the kubeadmin password
+   on your cluster's detail page at [console.redhat.com](https://console.redhat.com).
+
+2. Once logged in, click **your username in the top-right corner** and select
+   **Copy login command**.
+
+3. A new page opens — click **Display Token**.
+
+4. Copy the full command that looks like this:
+   ```bash
+   oc login --token=sha256~xxxxxxxxxxxxxxxx --server=https://api.your-cluster.com:6443
+   ```
+
+5. Paste it into your terminal and press Enter.
+
+Now verify it worked:
+
+```bash
+oc whoami
+# Expected output: kube:admin
+```
+
+Once you see `kube:admin` you have full cluster-admin rights and every command in
+this guide will work as expected. If you share this cluster with a team during a lab,
+use this `kubeadmin` session only for installation and admin tasks — day-to-day lab
+work can run under individual user accounts once permissions are set up in Step 2.
 
 ---
 
