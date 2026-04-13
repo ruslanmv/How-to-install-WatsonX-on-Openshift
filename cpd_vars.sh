@@ -7,7 +7,7 @@
 #   chmod 700 cpd_vars.sh
 #   source cpd_vars.sh
 #
-# ⚠️  Never commit this file to version control — it contains secrets.
+#  Never commit this file to version control — it contains secrets.
 #===============================================================================
 
 
@@ -54,7 +54,7 @@ export OC_LOGIN="oc login ${OCP_URL} ${LOGIN_ARGUMENTS}"
 export PROJECT_CERT_MANAGER=ibm-cert-manager
 export PROJECT_LICENSE_SERVICE=ibm-licensing
 
-# ✅ CORRECTED: IBM naming convention for CP4D 5.x is ibm-cpd-scheduler
+#  CORRECTED: IBM naming convention for CP4D 5.x is ibm-cpd-scheduler
 #    (not cpd-scheduler — updated to match IBM's published 5.0.2 examples)
 export PROJECT_SCHEDULING_SERVICE=ibm-cpd-scheduler
 
@@ -92,7 +92,7 @@ export STG_CLASS_FILE=ocs-storagecluster-cephfs
 # IBM Entitled Registry
 # ------------------------------------------------------------------------------
 # Obtain your key from: https://myibm.ibm.com/products-services/containerlibrary
-# ⚠️  Keep this value secret — treat it like a password.
+#   Keep this value secret — treat it like a password.
 export IBM_ENTITLEMENT_KEY=your-entitlement-key-here
 
 
@@ -101,7 +101,7 @@ export IBM_ENTITLEMENT_KEY=your-entitlement-key-here
 # ------------------------------------------------------------------------------
 # For standard connected installations, leave this section commented out.
 #
-# ⚠️  IMPORTANT: Uncommenting these five variables alone is NOT sufficient for
+#   IMPORTANT: Uncommenting these five variables alone is NOT sufficient for
 #    a mirrored deployment. Air-gapped installs require a full image-mirroring
 #    workflow (cpd-cli manage mirror-images + catalog mirroring) in addition to
 #    these credentials. Refer to IBM's mirrored installation documentation:
