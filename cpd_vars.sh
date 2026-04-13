@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #===============================================================================
 # Cloud Pak for Data — Installation Variables
-# Updated: April 2025 | CP4D 5.0.x / watsonx.ai on OpenShift
+# CP4D 5.0.2 · cpd-cli 14.0.2 · OpenShift 4.12+
 #
 # Usage:
 #   chmod 700 cpd_vars.sh
@@ -54,8 +54,9 @@ export OC_LOGIN="oc login ${OCP_URL} ${LOGIN_ARGUMENTS}"
 export PROJECT_CERT_MANAGER=ibm-cert-manager
 export PROJECT_LICENSE_SERVICE=ibm-licensing
 
-# ✅ NEW in CP4D 5.x: Scheduling Service now requires its own dedicated namespace.
-export PROJECT_SCHEDULING_SERVICE=cpd-scheduler
+# ✅ CORRECTED: IBM naming convention for CP4D 5.x is ibm-cpd-scheduler
+#    (not cpd-scheduler — updated to match IBM's published 5.0.2 examples)
+export PROJECT_SCHEDULING_SERVICE=ibm-cpd-scheduler
 
 # Operator and operand namespaces for your CP4D instance.
 export PROJECT_CPD_INST_OPERATORS=cpd-operators
@@ -67,20 +68,22 @@ export PROJECT_CPD_INST_OPERANDS=cpd-instance
 # ------------------------------------------------------------------------------
 # Set these to match your cluster's actual storage class names.
 # Run `oc get storageclass` to list what is available on your cluster.
+# The examples below are common names — yours may differ by platform and
+# deployment mode. Always verify before running any install commands.
 
-# ── ODF / OpenShift Data Foundation (on-prem or ROKS) ──────────────────────
+# ── ODF / OpenShift Data Foundation (on-prem or ROKS) — common example ──────
 export STG_CLASS_BLOCK=ocs-storagecluster-ceph-rbd
 export STG_CLASS_FILE=ocs-storagecluster-cephfs
 
-# ── AWS ROSA with EFS ────────────────────────────────────────────────────────
+# ── AWS ROSA with EFS — common example ──────────────────────────────────────
 # export STG_CLASS_BLOCK=gp3-csi
 # export STG_CLASS_FILE=efs-nfs-client
 
-# ── IBM Cloud ROKS ───────────────────────────────────────────────────────────
+# ── IBM Cloud ROKS — common example ─────────────────────────────────────────
 # export STG_CLASS_BLOCK=ibmc-block-gold
 # export STG_CLASS_FILE=ibmc-file-gold-gid
 
-# ── Azure ARO ────────────────────────────────────────────────────────────────
+# ── Azure ARO — common example ───────────────────────────────────────────────
 # export STG_CLASS_BLOCK=managed-premium
 # export STG_CLASS_FILE=azurefile-csi
 
@@ -96,8 +99,13 @@ export IBM_ENTITLEMENT_KEY=your-entitlement-key-here
 # ------------------------------------------------------------------------------
 # Private container registry (air-gapped / mirrored installs only)
 # ------------------------------------------------------------------------------
-# Uncomment and populate if you mirror images to a private registry.
-# Leave commented for standard online (connected) installations.
+# For standard connected installations, leave this section commented out.
+#
+# ⚠️  IMPORTANT: Uncommenting these five variables alone is NOT sufficient for
+#    a mirrored deployment. Air-gapped installs require a full image-mirroring
+#    workflow (cpd-cli manage mirror-images + catalog mirroring) in addition to
+#    these credentials. Refer to IBM's mirrored installation documentation:
+#    https://www.ibm.com/docs/en/cloud-paks/cp-data/5.0.x?topic=installing-mirroring-images
 #
 # export PRIVATE_REGISTRY_LOCATION=registry.example.com:5000
 # export PRIVATE_REGISTRY_PUSH_USER=push-user
@@ -109,9 +117,7 @@ export IBM_ENTITLEMENT_KEY=your-entitlement-key-here
 # ------------------------------------------------------------------------------
 # Cloud Pak for Data version
 # ------------------------------------------------------------------------------
-# ✅ UPDATED: 4.8.1 → 5.0.2
-# Always align this with the cpd-cli binary version you downloaded.
-# cpd-cli v13.x → CP4D 4.8.x | cpd-cli v14.x → CP4D 5.0.x
+# CP4D 5.0.2 uses cpd-cli 14.0.2 — always align the binary version to match.
 export VERSION=5.0.2
 
 
@@ -129,24 +135,25 @@ export VERSION=5.0.2
 #   cpd_platform       — CP4D control plane / web UI (always required)
 #   ws                 — Watson Studio
 #   wml                — Watson Machine Learning
-#   watsonx_ai         — watsonx.ai (requires ws + wml + GPU worker nodes)
+#   watsonx_ai         — watsonx.ai (commonly installed alongside ws and wml;
+#                        foundation models require GPU capacity)
 #   rstudio            — R Studio extension (enabled via Watson Studio UI, not CLI)
 #   db2oltp            — Db2 OLTP
 #   dv                 — Data Virtualization
 #   analyticsengine    — Analytics Engine powered by Apache Spark
 
-# ── Profile 1: Platform only (foundation, no services) ──────────────────────
+# ── Profile 1: Platform only (foundation, no services) ───────────────────────
 # export COMPONENTS=ibm-cert-manager,ibm-licensing,scheduler,cpfs,cpd_platform
 
 # ── Profile 2: Watson Studio only — recommended for academic labs / free trial
 # Minimum viable setup; enables Jupyter, AutoAI, Data Refinery, and R Studio UI
 export COMPONENTS=ibm-cert-manager,ibm-licensing,scheduler,cpfs,cpd_platform,ws
 
-# ── Profile 3: Watson Studio + Machine Learning ──────────────────────────────
+# ── Profile 3: Watson Studio + Machine Learning ───────────────────────────────
 # Adds model training and deployment; no LLMs / foundation models
 # export COMPONENTS=ibm-cert-manager,ibm-licensing,scheduler,cpfs,cpd_platform,ws,wml
 
-# ── Profile 4: Full watsonx.ai — requires GPU worker nodes ──────────────────
+# ── Profile 4: Full watsonx.ai — requires GPU worker nodes ───────────────────
 # export COMPONENTS=ibm-cert-manager,ibm-licensing,scheduler,cpfs,cpd_platform,ws,wml,watsonx_ai
 
 # To skip specific components during a partial upgrade or re-run:
@@ -162,6 +169,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "  Cluster         : ${OCP_URL}"
 echo "  OCP type        : ${OPENSHIFT_TYPE} (${IMAGE_ARCH})"
 echo "  CP4D version    : ${VERSION}"
+echo "  Scheduler NS    : ${PROJECT_SCHEDULING_SERVICE}"
 echo "  Operators NS    : ${PROJECT_CPD_INST_OPERATORS}"
 echo "  Operands NS     : ${PROJECT_CPD_INST_OPERANDS}"
 echo "  Block storage   : ${STG_CLASS_BLOCK}"
@@ -170,7 +178,8 @@ echo "  Components      : ${COMPONENTS}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Warn if placeholder values are still set
-if [[ "${OCP_PASSWORD}" == "your-password-here" || "${IBM_ENTITLEMENT_KEY}" == "your-entitlement-key-here" ]]; then
+if [[ "${OCP_PASSWORD}" == "your-password-here" || \
+      "${IBM_ENTITLEMENT_KEY}" == "your-entitlement-key-here" ]]; then
   echo ""
   echo "  ⚠️  WARNING: Placeholder values detected."
   echo "     Update OCP_PASSWORD and IBM_ENTITLEMENT_KEY before running cpd-cli."
