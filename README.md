@@ -1,37 +1,152 @@
-# How to install  Watsonx.ai on Openshift
+# How to install Watsonx.ai on Openshift
 
 
-If you have been trying to spin up a watsonx.ai instance on IBM Cloud lately and keep hitting a wall, you are not alone. Since April 6, 2025, IBM Cloud no longer allows new users to create watsonx.ai Lite instances. This has left a lot of people — especially those in academic programs and university labs — scrambling for an alternative. The good news is that there is one: you can run the full watsonx.ai stack on top of Red Hat OpenShift, whether that is on a public cloud or on your own infrastructure.
+If you have been trying to spin up a watsonx.ai instance on IBM Cloud lately and keep
+hitting a wall, you are not alone. Since April 6, 2025, IBM Cloud no longer allows new
+users to create watsonx.ai Lite instances. This has left a lot of people — especially
+those in academic programs and university labs — scrambling for an alternative. The good
+news is that there is one: you can run the full watsonx.ai stack on top of Red Hat
+OpenShift, whether that is on a public cloud or on your own infrastructure.
 
-In this guide I will walk you through the entire process from scratch. I will also show you a lighter-weight path using Watson Studio only, which is the right choice if you are working with a limited cluster — for example the 30-day OpenShift free trial. By the end you will have a working environment ready for AI and data science workloads.
+In this guide I will walk you through the entire process from scratch. I will also show
+you a lighter-weight path using Watson Studio only, which is the right choice if you are
+working with a limited cluster — for example the 30-day OpenShift free trial. By the end
+you will have a working environment ready for AI and data science workloads.
 
-Before we touch a single command, let me help you pick the right path. A full watsonx.ai deployment needs significant resources — at least six worker nodes and around 2 TB of storage. If you are running a free trial cluster or a small PoC environment, that is simply not going to fit. In that case, Watson Studio alone is the smarter starting point: it gives you Jupyter notebooks, AutoAI, Data Refinery and the model training framework with just three worker nodes and no GPU required — more than enough for coursework and hands-on learning. If you do have a beefier cluster and want the full LLM experience with foundation models like Granite and Llama 2, we will cover that too.
+Before we touch a single command, let me help you pick the right path. A full watsonx.ai
+deployment needs significant resources — at least six worker nodes and around 2 TB of
+storage. If you are running a free trial cluster or a small PoC environment, that is
+simply not going to fit. In that case, Watson Studio alone is the smarter starting point:
+it gives you Jupyter notebooks, AutoAI, Data Refinery and the model training framework
+with just three worker nodes and no GPU required — more than enough for coursework and
+hands-on learning. If you do have a beefier cluster and want the full LLM experience with
+foundation models like Granite and Llama 2, we will cover that too.
 
 ---
 
-## What You Will Need
+## Step 1 — Check What You Will Need
 
-Get these ready before starting. The installation will go much more smoothly if everything is in place upfront.
+Let us start simple. Before running a single command, make sure you have these five things
+ready on your workstation and your cluster. Think of this as your packing list before a
+trip — everything goes much more smoothly when it is all prepared upfront.
 
-- A running **OpenShift Container Platform (OCP) 4.12+** cluster with `cluster-admin` access.
-- **Podman** or **Docker Desktop** installed on your workstation.
-- An **IBM Entitlement Key** — grab it from the [IBM Container Library](https://myibm.ibm.com/products-services/containerlibrary). This is what allows your cluster to pull IBM software images.
-- The **cpd-cli** binary. Use version **14.x** for CP4D 5.x, or **13.x** if you are on the older CP4D 4.8.x. Download it directly from the [cpd-cli GitHub releases page](https://github.com/IBM/cpd-cli/releases).
-- The **oc** CLI (the OpenShift command-line tool), installed and pointing at your cluster.
+**1. An OpenShift cluster running version 4.12 or later.**
+You need `cluster-admin` access to it. If you are using the 30-day trial, make sure you
+are using the full **OpenShift Cluster Trial** (not the Developer Sandbox — the sandbox
+does not support the persistent storage that CP4D needs).
+
+**2. Podman or Docker Desktop on your laptop or workstation.**
+The `cpd-cli` tool uses a container internally to run certain management tasks, so one of
+these needs to be installed and running before you begin.
+
+**3. An IBM Entitlement Key.**
+This is essentially a password that lets your cluster pull IBM software images from IBM's
+private container registry. You can get yours from the
+[IBM Container Library](https://myibm.ibm.com/products-services/containerlibrary) — log
+in with your IBM ID, go to *Container Software*, and copy the key. Keep it somewhere safe,
+you will need it in a few steps.
+
+**4. The cpd-cli binary.**
+This is the command-line tool that drives the entire installation. Use version **14.x**
+if you are installing CP4D 5.x (which this guide covers), or **13.x** for the older
+CP4D 4.8.x. Download the right version from the
+[cpd-cli GitHub releases page](https://github.com/IBM/cpd-cli/releases).
+
+**5. The oc CLI.**
+This is OpenShift's own command-line tool, similar to `kubectl` if you have used
+Kubernetes before. It needs to be installed on your workstation and already pointed at
+your cluster. If you can run `oc whoami` and get back a username, you are all set.
+
+---
+
+## Step 2 — Understand Your User Permissions
+
+This is a short but important step, especially if you are new to OpenShift. Read it once
+now and you will save yourself a lot of confusion later.
+
+OpenShift uses a security system called **RBAC** — short for Role-Based Access Control.
+The idea is simple: every user on the cluster only has access to the specific resources
+they have been explicitly granted. Think of it like a hotel: your key card opens your
+room and the gym, but not the kitchen or the control room. Same principle here.
+
+What this means in practice is that some commands in this guide will work straight away
+for your user account, while others will require a small permission setup first. For
+example, `oc get storageclass` works for almost any user because storage classes are
+cluster-wide and readable by default. But a command like
+`oc get catsrc -n openshift-marketplace` targets a specific namespace, and if your
+account has not been granted access to that namespace, OpenShift will block it.
+
+**How to set up the right permissions now, before you need them.**
+
+If you are the cluster administrator on your trial or lab environment, run this once
+with your own username:
+
+```bash
+# Grants read-only access to the openshift-marketplace namespace
+# Replace "yourusername" with your actual OpenShift login
+oc adm policy add-role-to-user view yourusername -n openshift-marketplace
+```
+
+If you are a lab participant and someone else manages the cluster, ask your instructor
+or cluster admin to run that command for each person doing the lab. It is a safe,
+read-only grant — it lets users *see* what is in that namespace, but not change or
+delete anything.
+
+For a shared training environment where all participants need broader visibility, the
+admin can instead grant a cluster-wide read role:
+
+```bash
+# Grants read-only visibility across the entire cluster
+oc adm policy add-cluster-role-to-user cluster-reader yourusername
+```
+
+Use the first option (namespace-scoped) for most cases. The second is only needed if
+participants need to inspect resources across many different namespaces during the lab.
+
+**Quick check — confirm your access is working.**
+
+Run these two commands before moving on. They take five seconds and confirm that your
+setup is ready:
+
+```bash
+# Check 1 — basic cluster access
+oc get storageclass
+```
+
+```bash
+# Check 2 — marketplace namespace access (requires the permission grant above)
+oc get catsrc -n openshift-marketplace
+```
+
+If both return a table of results, you are good to go. If the second one returns a
+`forbidden` error, go back and apply the permission grant above before continuing.
+It is much better to sort this out now than to hit it unexpectedly in the middle of
+the installation.
 
 ---
 
 ## Setting Up the Cluster
 
-The first thing to do is make sure your cluster has the right foundation in place. For a full watsonx.ai deployment you want at least six worker nodes — on AWS, `m6i.2xlarge` instances work well. Three of those nodes should be dedicated to **OpenShift Data Foundation (ODF)**, which is what gives CP4D its storage layer. Head into the OpenShift web console, open **OperatorHub**, search for *OpenShift Data Foundation* and install it. Once it is running, it will create the block and file storage classes that every subsequent step depends on.
+The first thing to do is make sure your cluster has the right foundation in place. For a
+full watsonx.ai deployment you want at least six worker nodes — on AWS, `m6i.2xlarge`
+instances work well. Three of those nodes should be dedicated to **OpenShift Data
+Foundation (ODF)**, which is what gives CP4D its storage layer. Head into the OpenShift
+web console, open **OperatorHub**, search for *OpenShift Data Foundation* and install it.
+Once it is running, it will create the block and file storage classes that every
+subsequent step depends on.
 
-If you plan to run foundation models, you also need GPU support. Install the **Node Feature Discovery (NFD)** operator first — it discovers the hardware capabilities of your nodes — then install the **NVIDIA GPU Operator** and create a Cluster Policy. Both are available through OperatorHub. If you are going the Watson Studio–only route, skip GPU setup entirely and move straight to the next section.
+If you plan to run foundation models, you also need GPU support. Install the **Node
+Feature Discovery (NFD)** operator first — it discovers the hardware capabilities of your
+nodes — then install the **NVIDIA GPU Operator** and create a Cluster Policy. Both are
+available through OperatorHub. If you are going the Watson Studio–only route, skip GPU
+setup entirely and move straight to the next section.
 
 ---
 
 ## Installing cpd-cli
 
-With the cluster ready, set up the `cpd-cli` tool on your workstation. This is the command-line interface that drives the entire CP4D installation process.
+With the cluster ready, set up the `cpd-cli` tool on your workstation. This is the
+command-line interface that drives the entire CP4D installation process.
 
 ```bash
 # Download the Enterprise Edition for Linux
@@ -45,13 +160,16 @@ export PATH=~/cpd:$PATH
 cpd-cli version
 ```
 
-Always match the CLI version to your CP4D version. If you are on CP4D 4.8.x, use v13.x instead.
+Always match the CLI version to your CP4D version. If you are on CP4D 4.8.x, use v13.x
+instead.
 
 ---
 
 ## Configuring Your Environment Variables
 
-Rather than typing your cluster details into every command, we store them all in a single file that we source before running anything. Think of `cpd_vars.sh` as the control panel for your installation — change a value in one place and it propagates everywhere.
+Rather than typing your cluster details into every command, we store them all in a single
+file that we source before running anything. Think of `cpd_vars.sh` as the control panel
+for your installation — change a value in one place and it propagates everywhere.
 
 Create the file, fill in your actual values, and source it:
 
@@ -94,13 +212,19 @@ chmod 700 ~/cpd_vars.sh
 source ~/cpd_vars.sh
 ```
 
-Two things worth noting here. First, check your storage class names with `oc get storageclass` before proceeding — if they do not match exactly, every storage-related step will fail silently. Second, the `PROJECT_SCHEDULING_SERVICE` variable is new in CP4D 5.x. The scheduler now lives in its own namespace, and you will see it used a few steps ahead.
+Two things worth noting here. First, check your storage class names with
+`oc get storageclass` before proceeding — if they do not match exactly, every
+storage-related step will fail silently. Second, the `PROJECT_SCHEDULING_SERVICE`
+variable is new in CP4D 5.x. The scheduler now lives in its own namespace, and you will
+see it used a few steps ahead.
 
 ---
 
 ## Logging In and Registering Your Entitlement Key
 
-With the environment sourced, log in to the cluster through `cpd-cli` and register your IBM entitlement key. This tells your cluster where to pull IBM container images from and gives it permission to do so.
+With the environment sourced, log in to the cluster through `cpd-cli` and register your
+IBM entitlement key. This tells your cluster where to pull IBM container images from and
+gives it permission to do so.
 
 ```bash
 # Log in via cpd-cli
@@ -114,13 +238,17 @@ cpd-cli manage add-icr-cred-to-global-pull-secret \
   --entitled_registry_key=${IBM_ENTITLEMENT_KEY}
 ```
 
-After running the second command, OpenShift will quietly restart nodes one at a time to apply the new pull secret. Give it a few minutes before moving on.
+After running the second command, OpenShift will quietly restart nodes one at a time to
+apply the new pull secret. Give it a few minutes before moving on.
 
 ---
 
 ## Setting Up the IBM Operator Catalog
 
-This is the step that trips up most people following older tutorials. The old approach — running `oc apply` against a YAML file on GitHub — no longer works because that registry has been decommissioned. We now apply the catalog source directly from IBM's container registry instead.
+This is the step that trips up most people following older tutorials. The old approach —
+running `oc apply` against a YAML file on GitHub — no longer works because that registry
+has been decommissioned. We now apply the catalog source directly from IBM's container
+registry instead.
 
 ```bash
 cat <<EOF | oc apply -f -
@@ -142,19 +270,29 @@ spec:
 EOF
 ```
 
+> ⚠️ **Permissions note:** The command above requires `cluster-admin` rights to create
+> a `CatalogSource` object. The verification command below requires at minimum the
+> `view` role on the `openshift-marketplace` namespace. If you have not done so already,
+> refer to **Step 2** at the top of this guide.
+
 Wait a moment then check that it came up correctly:
 
 ```bash
+# Requires view access to openshift-marketplace — see Step 2 if this fails
 oc get catsrc ibm-operator-catalog -n openshift-marketplace
 ```
 
-You want to see `READY` in the status column. If it shows `CONNECTING` for more than a few minutes, jump to the troubleshooting section at the end of this post. Everything from here on depends on this being healthy, so do not skip the verification.
+You want to see `READY` in the status column. If it shows `CONNECTING` for more than a
+few minutes, jump to the troubleshooting section at the end of this post. Everything from
+here on depends on this being healthy, so do not skip the verification.
 
 ---
 
 ## Creating Namespaces and Authorizing the Topology
 
-CP4D uses a layered namespace model: operators live in one project and the actual workloads (operands) live in another. We also need dedicated namespaces for the cert manager, licensing service and the scheduler. Create them all now:
+CP4D uses a layered namespace model: operators live in one project and the actual
+workloads (operands) live in another. We also need dedicated namespaces for the cert
+manager, licensing service and the scheduler. Create them all now:
 
 ```bash
 oc new-project ${PROJECT_CERT_MANAGER}
@@ -176,7 +314,10 @@ cpd-cli manage authorize-instance-topology \
 
 ## Installing the Foundational Services
 
-CP4D 5.x has three foundational service layers that need to go in before anything else: the Certificate Manager, the License Service, and the Scheduling Service. The scheduler is a new mandatory component in this version — it was not needed in 4.8.x, which is why many older guides omit it.
+CP4D 5.x has three foundational service layers that need to go in before anything else:
+the Certificate Manager, the License Service, and the Scheduling Service. The scheduler
+is a new mandatory component in this version — it was not needed in 4.8.x, which is why
+many older guides omit it.
 
 ```bash
 # Certificate Manager and License Service
@@ -205,7 +346,10 @@ cpd-cli manage setup-instance-topology \
 
 ## Installing the Cloud Pak for Data Platform
 
-Now we install the CP4D control plane — the web UI and core platform that everything else plugs into. This happens in two phases: first the OLM operator objects, then the actual platform operands. The second command can take 30 to 60 minutes, so this is a good time to grab a coffee.
+Now we install the CP4D control plane — the web UI and core platform that everything else
+plugs into. This happens in two phases: first the OLM operator objects, then the actual
+platform operands. The second command can take 30 to 60 minutes, so this is a good time
+to grab a coffee.
 
 ```bash
 # Phase 1 — OLM operator objects
@@ -232,13 +376,17 @@ cpd-cli manage get-cpd-instance-details \
   --get_admin_initial_credentials=true
 ```
 
-Open that URL in a browser and verify you can log in before continuing. It is worth confirming the platform is healthy at this point rather than discovering a problem two hours later.
+Open that URL in a browser and verify you can log in before continuing. It is worth
+confirming the platform is healthy at this point rather than discovering a problem two
+hours later.
 
 ---
 
 ## Installing the Watsonx.ai Service
 
-With the platform running, it is time to add watsonx.ai on top. Same two-phase pattern as before — OLM objects first, then the custom resource. Expect this one to take 60 to 90 minutes.
+With the platform running, it is time to add watsonx.ai on top. Same two-phase pattern
+as before — OLM objects first, then the custom resource. Expect this one to take 60 to
+90 minutes.
 
 ```bash
 # Phase 1 — OLM objects
@@ -267,7 +415,11 @@ cpd-cli manage get-cr-status --cpd_instance_ns=${PROJECT_CPD_INST_OPERANDS}
 
 ## Adding Foundation Models
 
-Once watsonx.ai is up, it ships without any language models pre-loaded — you choose and activate exactly the ones you need. Each model requires a dedicated GPU worker node, so add one to your cluster before patching. On AWS a `g5.8xlarge` works well (32 vCPU, 128 GB RAM, A10G GPU). On Azure, use `Standard_NC24ads_A100_v4`, and on IBM Cloud, `gx3.16x80.l4`.
+Once watsonx.ai is up, it ships without any language models pre-loaded — you choose and
+activate exactly the ones you need. Each model requires a dedicated GPU worker node, so
+add one to your cluster before patching. On AWS a `g5.8xlarge` works well (32 vCPU,
+128 GB RAM, A10G GPU). On Azure, use `Standard_NC24ads_A100_v4`, and on IBM Cloud,
+`gx3.16x80.l4`.
 
 With the GPU node ready, patch the watsonx.ai custom resource to activate your models:
 
@@ -286,15 +438,21 @@ oc patch watsonxaiifm watsonxaiifm-cr \
   }'
 ```
 
-For the full catalog of available models and their exact GPU requirements, see the [IBM documentation on adding foundation models](https://www.ibm.com/docs/en/cloud-paks/cp-data/5.0.x?topic=setup-adding-foundation-models).
+For the full catalog of available models and their exact GPU requirements, see the
+[IBM documentation on adding foundation models](https://www.ibm.com/docs/en/cloud-paks/cp-data/5.0.x?topic=setup-adding-foundation-models).
 
 ---
 
 ## The Lightweight Path: Watson Studio Only
 
-If you are working within the constraints of a free trial cluster or a smaller on-prem environment, skip the watsonx.ai steps above entirely and install Watson Studio instead. You get Jupyter notebooks, AutoAI, Data Refinery and the model training framework — which covers the vast majority of academic lab scenarios — with just three worker nodes, no GPU, and roughly 500 GB of storage.
+If you are working within the constraints of a free trial cluster or a smaller on-prem
+environment, skip the watsonx.ai steps above entirely and install Watson Studio instead.
+You get Jupyter notebooks, AutoAI, Data Refinery and the model training framework —
+which covers the vast majority of academic lab scenarios — with just three worker nodes,
+no GPU, and roughly 500 GB of storage.
 
-Follow every step above up through the CP4D platform installation, then replace the watsonx.ai step with this:
+Follow every step above up through the CP4D platform installation, then replace the
+watsonx.ai step with this:
 
 ```bash
 # Watson Studio — OLM objects
@@ -319,13 +477,19 @@ Monitor it the same way:
 cpd-cli manage get-cr-status --cpd_instance_ns=${PROJECT_CPD_INST_OPERANDS}
 ```
 
-**A word on R Studio specifically.** If your goal is to run R Studio for data science coursework, you cannot install it as a standalone service — it will fail. In CP4D 5.x, R Studio is bundled as an extension of Watson Studio, not a separate component. Install Watson Studio first using the commands above, and then enable R Studio from the CP4D console under **Services → Instances → Watson Studio → R Studio**. It takes just a few clicks from inside the UI and does not require any additional CLI work.
+**A word on R Studio specifically.** If your goal is to run R Studio for data science
+coursework, you cannot install it as a standalone service — it will fail. In CP4D 5.x,
+R Studio is bundled as an extension of Watson Studio, not a separate component. Install
+Watson Studio first using the commands above, and then enable R Studio from the CP4D
+console under **Services → Instances → Watson Studio → R Studio**. It takes just a few
+clicks from inside the UI and does not require any additional CLI work.
 
 ---
 
 ## How Much Resource Do You Actually Need?
 
-Here is a quick reference so you can size your cluster before starting rather than hitting capacity issues halfway through:
+Here is a quick reference so you can size your cluster before starting rather than
+hitting capacity issues halfway through:
 
 | Component | CPU (cores) | RAM (GB) | Storage |
 |---|---|---|---|
@@ -335,17 +499,45 @@ Here is a quick reference so you can size your cluster before starting rather th
 | watsonx.ai (no models) | 32 | 128 | 500 GB |
 | Each foundation model (e.g., Granite 13B) | GPU required | 32+ | 50–100 GB |
 
-These are minimums for a working installation. Production deployments should add headroom on top of these numbers.
+These are minimums for a working installation. Production deployments should add headroom
+on top of these numbers.
 
 ---
 
 ## When Things Go Wrong
 
-Even when you follow every step carefully, a few things have a habit of going sideways. Here are the ones I have seen most often and how to fix them.
+Even when you follow every step carefully, a few things have a habit of going sideways.
+Here are the ones I have seen most often and how to fix them.
+
+### You get a "forbidden" error on an oc get command
+
+This is an RBAC permissions issue, not a problem with your installation. OpenShift
+controls access to resources at the namespace level, and some namespaces — like
+`openshift-marketplace` — require an explicit permission grant before a regular user can
+read from them.
+
+The fix is straightforward. Ask your cluster administrator to run:
+
+```bash
+# Replace "yourusername" with the actual OpenShift username
+oc adm policy add-role-to-user view yourusername -n openshift-marketplace
+```
+
+If you are the admin on your own trial cluster, run it yourself. After that, any `oc get`
+command targeting the `openshift-marketplace` namespace will work as expected. For a
+broader read-only view across the whole cluster, the admin can alternatively grant:
+
+```bash
+oc adm policy add-cluster-role-to-user cluster-reader yourusername
+```
+
+Use the namespace-scoped option (first command) for shared lab environments, and the
+cluster-reader option only when a user genuinely needs visibility across all namespaces.
 
 ### The catalog source stays in CONNECTING
 
-This usually means the cluster cannot pull from `icr.io`. Start by checking the catalog pod's logs:
+This usually means the cluster cannot pull from `icr.io`. Start by checking the catalog
+pod's logs:
 
 ```bash
 oc get pods -n openshift-marketplace | grep ibm-operator
@@ -360,7 +552,8 @@ oc get secret pull-secret -n openshift-config \
   | base64 --decode | jq '.auths | keys'
 ```
 
-You should see `icr.io` in that list. If you do not, re-run the `add-icr-cred-to-global-pull-secret` command and wait a few minutes for nodes to cycle.
+You should see `icr.io` in that list. If you do not, re-run the
+`add-icr-cred-to-global-pull-secret` command and wait a few minutes for nodes to cycle.
 
 ### A custom resource is stuck in InProgress
 
@@ -377,15 +570,20 @@ oc get pods -n ${PROJECT_CPD_INST_OPERANDS} | grep -v Running | grep -v Complete
 oc logs <pod-name> -n ${PROJECT_CPD_INST_OPERANDS} --previous
 ```
 
-The most common culprits are insufficient PVC quota, a wrong storage class name, or a node that has run out of memory. Check all three before assuming something more exotic is wrong.
+The most common culprits are insufficient PVC quota, a wrong storage class name, or a
+node that has run out of memory. Check all three before assuming something more exotic
+is wrong.
 
 ### Storage class not found
 
-Run `oc get storageclass` and compare the output against what you have in `cpd_vars.sh`. The names must match character for character — a wrong suffix like `-csi` vs no suffix is enough to break things. Correct the variable, re-source the file, and retry.
+Run `oc get storageclass` and compare the output against what you have in `cpd_vars.sh`.
+The names must match character for character — a wrong suffix like `-csi` vs no suffix
+is enough to break things. Correct the variable, re-source the file, and retry.
 
 ### OLM objects fail to apply
 
-Make sure the catalog source is in `READY` state before running any `apply-olm` command. If it is not, delete and re-apply it:
+Make sure the catalog source is in `READY` state before running any `apply-olm` command.
+If it is not, delete and re-apply it:
 
 ```bash
 oc delete catsrc ibm-operator-catalog -n openshift-marketplace
@@ -396,7 +594,14 @@ oc delete catsrc ibm-operator-catalog -n openshift-marketplace
 
 ## Wrapping Up
 
-That covers everything from a fresh OpenShift cluster to a fully running watsonx.ai environment — or a lean Watson Studio installation if you are working with limited resources. The two things that catch most people are the decommissioned catalog registry (fixed by using `icr.io/cpopen` directly) and the missing scheduler namespace in CP4D 5.x (fixed by adding `apply-scheduler` and `PROJECT_SCHEDULING_SERVICE` to your setup). Get those right and the rest of the installation follows a clean, predictable path.
+That covers everything from a fresh OpenShift cluster to a fully running watsonx.ai
+environment — or a lean Watson Studio installation if you are working with limited
+resources. The three things that catch most people are the decommissioned catalog
+registry (fixed by using `icr.io/cpopen` directly), the missing scheduler namespace in
+CP4D 5.x (fixed by adding `apply-scheduler` and `PROJECT_SCHEDULING_SERVICE` to your
+setup), and RBAC permission errors on verification commands (fixed with a single
+`oc adm policy` command before you start). Get those three right and the rest of the
+installation follows a clean, predictable path.
 
 For further reading:
 - [IBM Cloud Pak for Data 5.0.x documentation](https://www.ibm.com/docs/en/cloud-paks/cp-data/5.0.x)
