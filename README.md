@@ -1,5 +1,8 @@
 # How to install Watsonx.ai on Openshift
 
+*Cloud Pak for Data 5.0.2 · cpd-cli v14.x · OpenShift 4.12+*
+
+---
 
 Since 2025, IBM has significantly restricted or phased out new watsonx.ai Lite instance
 creation in many regions. If you are in a university lab or academic program and suddenly
@@ -23,9 +26,9 @@ hands-on learning, and it runs comfortably on just three worker nodes with no GP
 required.
 
 If you do have a larger cluster with GPU nodes available and want the full experience with
-foundation models like Granite, we cover that path too — just keep reading
-past the Watson Studio section. Keep in mind that available models depend on your
-entitlement and the IBM catalog version active in your cluster at installation time.
+foundation models like Granite, we cover that path too — just keep reading past the
+Watson Studio section. Keep in mind that available models depend on your entitlement and
+the IBM catalog version active in your cluster at installation time.
 
 You will also need outbound network access from your cluster to `icr.io` and IBM
 endpoints to pull container images. If you are in an air-gapped or restricted network
@@ -34,38 +37,40 @@ scope of this guide, but the IBM documentation covers it in detail.
 
 ---
 
-## Step 0 — Log In as kubeadmin
+## Step 0 — Are You on the Right Cluster?
 
-Most installation steps in this guide require cluster-admin privileges. The easiest way
-to get that during setup is to use the built-in `kubeadmin` account. Day-to-day CP4D
-operations can and should use regular user accounts, but for the initial deployment you
-want to be running as `kubeadmin`.
+> ⚠️ **Developer Sandbox users — read this first.**
+> The **Red Hat Developer Sandbox** looks like OpenShift but it is not the same as a
+> proper cluster trial. It does not support persistent storage, it has no `kubeadmin`
+> account, and it will fail at almost every step in this guide. If your cluster URL
+> contains `sandbox` or you received a welcome email from Red Hat saying you have a
+> 30-day sandbox trial, you are on the wrong environment.
+>
+> You need a real OpenShift cluster. Go to
+> [console.redhat.com](https://console.redhat.com) → **OpenShift** → **Create cluster**
+> and choose **Red Hat OpenShift Container Platform** with at least 3 worker nodes.
+> That is the environment this guide is written for.
 
-Start by confirming who you are currently logged in as:
+With the right cluster in hand, confirm you are logged in as `kubeadmin` before
+touching anything else. Every installation command in this guide requires cluster-admin
+rights.
 
 ```bash
 oc whoami
+# Expected output: kube:admin
 ```
 
-If the output says `kube:admin` you are good to go. If it shows anything else, follow
-the steps below to switch before going any further.
-
-**How to log in as kubeadmin from the web console:**
+If you see your personal username instead of `kube:admin`, follow these steps to switch:
 
 1. Open your cluster's web console URL in a browser and log in as `kubeadmin`.
-   On the 30-day trial you can find both the console URL and the kubeadmin password
-   on your cluster's detail page at [console.redhat.com](https://console.redhat.com).
-
-2. Once logged in, click **your username in the top-right corner** and select
-   **Copy login command**.
-
+   On the trial you can find both the console URL and the kubeadmin password on your
+   cluster's detail page at [console.redhat.com](https://console.redhat.com).
+2. Click **your username in the top-right corner** and select **Copy login command**.
 3. A new page opens — click **Display Token**.
-
 4. Copy the full command that looks like this:
    ```bash
    oc login --token=sha256~xxxxxxxxxxxxxxxx --server=https://api.your-cluster.com:6443
    ```
-
 5. Paste it into your terminal and press Enter.
 
 Verify it worked:
@@ -75,10 +80,9 @@ oc whoami
 # Expected output: kube:admin
 ```
 
-Once you see `kube:admin` you are ready to proceed. If you share this cluster with a
-team during a lab, use this `kubeadmin` session only for installation and admin tasks —
-day-to-day lab work should run under individual user accounts once permissions are set
-up in Step 2.
+Once you see `kube:admin` you are ready to proceed. Use this `kubeadmin` session only
+for installation and admin tasks — day-to-day lab work should run under individual user
+accounts once permissions are set up in Step 2.
 
 ---
 
@@ -101,8 +105,8 @@ these needs to be installed and running before you begin.
 This is essentially a password that lets your cluster pull IBM software images from IBM's
 private container registry. You can get yours from the
 [IBM Container Library](https://myibm.ibm.com/products-services/containerlibrary) — log
-in with your IBM ID, go to *Container Software*, and copy the key. Keep it somewhere safe,
-you will need it in a few steps.
+in with your IBM ID, go to *Container Software*, and copy the key. Keep it somewhere
+safe, you will need it in a few steps.
 
 **4. The cpd-cli binary.**
 This is the command-line tool that drives the entire installation. Use version **14.x**
@@ -241,7 +245,7 @@ export CPDM_OC_LOGIN="cpd-cli manage login-to-ocp ${SERVER_ARGUMENTS} ${LOGIN_AR
 # ── Projects / Namespaces ─────────────────────────────────────────────────────
 export PROJECT_CERT_MANAGER=ibm-cert-manager
 export PROJECT_LICENSE_SERVICE=ibm-licensing
-export PROJECT_SCHEDULING_SERVICE=cpd-scheduler
+export PROJECT_SCHEDULING_SERVICE=ibm-cpd-scheduler
 export PROJECT_CPD_INST_OPERATORS=cpd-operators
 export PROJECT_CPD_INST_OPERANDS=cpd-instance
 
@@ -562,6 +566,14 @@ components you enable. Production deployments should add headroom on top of thes
 Even when you follow every step carefully, a few things have a habit of going sideways.
 Here are the ones I have seen most often and how to fix them.
 
+### You are on the Developer Sandbox instead of a real cluster
+
+The Developer Sandbox does not support persistent storage, does not have a `kubeadmin`
+account, and cannot run CP4D. If your cluster URL contains `sandbox` or you cannot find
+a kubeadmin password anywhere, you are on the wrong environment. Go to
+[console.redhat.com](https://console.redhat.com), create a proper OpenShift cluster
+trial, and start again from Step 0.
+
 ### You get a "forbidden" error on an oc get command
 
 This is an RBAC permissions issue, not a problem with your installation. OpenShift
@@ -576,16 +588,12 @@ The fix is straightforward. Ask your cluster administrator to run:
 oc adm policy add-role-to-user view yourusername -n openshift-marketplace
 ```
 
-If you are the admin on your own trial cluster, run it yourself. After that, any `oc get`
-command targeting the `openshift-marketplace` namespace will work as expected. For a
-broader read-only view across the whole cluster, the admin can alternatively grant:
+If you are the admin on your own trial cluster, run it yourself. For a broader read-only
+view across the whole cluster, the admin can alternatively grant:
 
 ```bash
 oc adm policy add-cluster-role-to-user cluster-reader yourusername
 ```
-
-Use the namespace-scoped option (first command) for shared lab environments, and the
-cluster-reader option only when a user genuinely needs visibility across all namespaces.
 
 ### The catalog source stays in CONNECTING
 
@@ -651,12 +659,13 @@ oc delete catsrc ibm-operator-catalog -n openshift-marketplace
 
 That covers everything from a fresh OpenShift cluster to a fully running watsonx.ai
 environment — or a lean Watson Studio installation if you are working with limited
-resources. The three things that catch most people are the decommissioned catalog
-registry (fixed by using `icr.io/cpopen` directly), the missing scheduler namespace in
-CP4D 5.x (fixed by adding `apply-scheduler` and `PROJECT_SCHEDULING_SERVICE` to your
-setup), and RBAC permission errors on verification commands (fixed with a single
-`oc adm policy` command before you start). Get those three right and the rest of the
-installation follows a clean, predictable path.
+resources. The four things that catch most people are using the Developer Sandbox instead
+of a real cluster (solved by creating a proper trial at console.redhat.com), the
+decommissioned catalog registry (fixed by using `icr.io/cpopen` directly), the missing
+scheduler namespace in CP4D 5.x (fixed by adding `apply-scheduler` and
+`PROJECT_SCHEDULING_SERVICE` to your setup), and RBAC permission errors on verification
+commands (fixed with a single `oc adm policy` command before you start). Get those four
+right and the rest of the installation follows a clean, predictable path.
 
 For further reading:
 - [IBM Cloud Pak for Data 5.0.x documentation](https://www.ibm.com/docs/en/cloud-paks/cp-data/5.0.x)
